@@ -49,9 +49,9 @@ colons, or the breaking-change `!` marker in branch names.
 
 Keep changes focused, readable, and typed. Prefer small functions and explicit
 data flow. For decoder changes, document the binary-layout evidence in
-[`docs/swiss-manager-format.md`](docs/swiss-manager-format.md) and the relevant
-format-specific notes, preserve unidentified data, and check
-record boundaries, missing values, reference numbers, dates, and score units.
+[`docs/swiss-manager-format.md`](docs/swiss-manager-format.md), preserve
+unidentified data, and check record boundaries, missing values, reference numbers,
+dates, and score units.
 
 Add regression or edge-case tests when changing behavior. Tests must run offline.
 Keep local source files and downloaded reference snapshots in `tests/fixtures/`;

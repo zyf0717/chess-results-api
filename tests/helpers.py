@@ -1,8 +1,14 @@
-"""Small synthetic encoders for the observed Swiss-Manager records."""
+"""Synthetic record builders and optional local fixture lookup."""
 
+from pathlib import Path
 from struct import pack, pack_into
 
+import pytest
+
+from chess_results_api import Tournament, load_tournament
+
 LOCAL_BINARIES = {
+    "TUMX": "olympiad2026open_1469895.TUMX",
     "TUNX": "41st_abu_dhabi_amateur_chess_tournament_1498717__1_.TUNX",
     "TURX": "juvenil_femenino_c_1499104.TURX",
     "TUTX": "4_hsl_jug_seniori_2026_jesenski_1356710.TUTX",
@@ -112,3 +118,27 @@ def _paired_document(**overrides: object) -> bytes:
         "matches": _match(),
     }
     return _document(**(options | overrides))
+
+
+def _individual_document(**overrides: object) -> bytes:
+    options = {
+        "tournament_type": 0,
+        "player": _player(0, board=0) * 2,
+        "player_count": 2,
+        "boards": 0,
+        "round_count": 1,
+        "schedule": _schedule(1, 0),
+        "games": _game(),
+    }
+    return _document(**(options | overrides))
+
+
+def fixture_path(name: str) -> Path:
+    path = Path(__file__).parent / "fixtures" / name
+    if not path.is_file():
+        pytest.skip(f"Optional local fixture is not distributed: {name}")
+    return path
+
+
+def load_local_tournament(suffix: str) -> Tournament:
+    return load_tournament(fixture_path(LOCAL_BINARIES[suffix]))

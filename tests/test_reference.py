@@ -6,9 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from chess_results_api import load_tournament
-
-from .helpers import LOCAL_BINARIES
+from .helpers import fixture_path, load_local_tournament
 
 
 def _rows(path: Path) -> list[list[str]]:
@@ -23,12 +21,8 @@ def _rows(path: Path) -> list[list[str]]:
 
 
 def test_local_published_board_point_totals() -> None:
-    fixtures = Path(__file__).parent / "fixtures"
-    source = fixtures / "olympiad2026open_1469895.TUMX"
-    reference = fixtures / "standings-reference.html"
-    if not source.is_file() or not reference.is_file():
-        pytest.skip("Optional local tournament and published standings snapshot are required")
-    tournament = load_tournament(source)
+    reference = fixture_path("standings-reference.html")
+    tournament = load_local_tournament("TUMX")
     totals = {team.number: 0.0 for team in tournament.teams}
     for round_ in tournament.rounds:
         for match in round_.matches:
@@ -48,13 +42,9 @@ def test_local_published_board_point_totals() -> None:
 
 
 @pytest.mark.parametrize("suffix,count", [("TUNX", 74), ("TURX", 6), ("TUTX", 10)])
-def test_new_formats_against_published_scores(suffix: str, count: int) -> None:
-    fixtures = Path(__file__).parent / "fixtures"
-    source = fixtures / LOCAL_BINARIES[suffix]
-    reference = fixtures / f"{suffix.lower()}-reference.html"
-    if not source.is_file() or not reference.is_file():
-        pytest.skip(f"Optional local {suffix} binary and published reference are required")
-    tournament = load_tournament(source)
+def test_published_scores(suffix: str, count: int) -> None:
+    reference = fixture_path(f"{suffix.lower()}-reference.html")
+    tournament = load_local_tournament(suffix)
     expected = {}
     if tournament.tournament_type.is_team:
         totals = {team.name: 0.0 for team in tournament.teams}
