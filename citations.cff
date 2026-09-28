@@ -7,6 +7,6 @@ authors:
     given-names: Yifei
     email: zyf0717@gmail.com
 version: 0.1.0
-abstract: "A Python package for decoding Chess-Results tournament data into typed records."
+abstract: "Download Chess-Results tournament files and decode them into typed Python records."
 repository-code: "https://github.com/zyf0717/chess-results-api"
 license: Apache-2.0

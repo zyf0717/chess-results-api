@@ -1,68 +1,19 @@
 # Contributing
 
-## Development setup
+## Development
 
-Use Python 3.12+ and [uv](https://docs.astral.sh/uv/). From the repository root:
+Use Python 3.12+ and [uv](https://docs.astral.sh/uv/):
 
 ```sh
-uv sync --locked
+uv sync --locked --extra browser
+uv run playwright install chromium
 ```
 
-This creates `.venv` and installs the package, pytest, and Ruff. Use `uv run` for
-project commands. When changing dependencies, update `pyproject.toml` and `uv.lock`
-together.
+This creates `.venv` with the package, pytest, Ruff, and Playwright. For decoder
+work only, omit `--extra browser` and the Chromium installation. Update
+`pyproject.toml` and `uv.lock` together when changing dependencies.
 
-For download development, run `uv sync --locked --extra browser` and
-`uv run playwright install chromium`. Browser tests intercept requests and run
-offline; they skip when the extra or browser is absent.
-
-## Commit messages
-
-All commits must follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/):
-
-```text
-<type>[optional scope][!]: <description>
-```
-
-Use `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`,
-`chore`, or `revert`. Write a concise description in the imperative. Mark breaking
-changes with `!` and explain the migration in a `BREAKING CHANGE:` footer.
-
-Examples:
-
-```text
-feat(tumx): decode round schedules
-fix(tumx): preserve empty player slots
-docs: document the contribution workflow
-```
-
-## Branch names
-
-Work on a branch named with a Conventional Commit type followed by `/` and a
-short lowercase, hyphen-separated description:
-
-```text
-<type>/<short-description>
-```
-
-Use the same types as commit messages. Examples: `feat/tumx-round-schedules`,
-`fix/empty-player-slots`, and `docs/contributing-guide`. Do not include spaces,
-colons, or the breaking-change `!` marker in branch names.
-
-## Changes and verification
-
-Keep changes focused, readable, and typed. Prefer small functions and explicit
-data flow. For decoder changes, document the binary-layout evidence in
-[`docs/swiss-manager-format.md`](docs/swiss-manager-format.md), preserve
-unidentified data, and check record boundaries, missing values, reference numbers,
-dates, and score units.
-
-Add regression or edge-case tests when changing behavior. Tests must run offline.
-Keep local source files and downloaded reference snapshots in `tests/fixtures/`;
-that directory is ignored by Git and excluded from package archives. Do not
-force-add fixtures. Use synthetic inputs for tests that must run in every checkout.
-
-Before submitting a pull request, run:
+Before opening a PR:
 
 ```sh
 uv run ruff format .
@@ -71,9 +22,56 @@ uv run pytest
 uv build
 ```
 
-Tests requiring optional local fixtures may skip when those files are absent.
-GitHub Actions runs these checks on Ubuntu with Python 3.12–3.14, and on Windows
-and macOS with Python 3.12. CI installs Chromium for the offline browser tests;
-local binary and reference fixtures are absent, so their tests skip.
-Describe the behavior changed, the supporting evidence, and the checks run in
-the pull request. Use a Conventional Commit title for squash merges.
+CI runs on pull requests and pushes to `main`: Ubuntu Python 3.12–3.14, Windows
+3.12, and macOS 3.12. Describe the change and its validation in the PR.
+
+## Commits and branches
+
+Use [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/)
+for commits and squash-merge PR titles:
+
+```text
+<type>[optional scope][!]: <description>
+```
+
+Types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`,
+`chore`, or `revert`. Use an imperative description. Mark breaking changes with
+`!` and explain the migration in a `BREAKING CHANGE:` footer.
+
+Branch names use `<type>/<short-description>` with lowercase, hyphen-separated
+words, such as `feat/tournament-download` or `fix/empty-player-slots`.
+
+## Code and tests
+
+Keep changes focused, readable, and typed. Prefer small functions and explicit
+data flow. Document decoder evidence in the [format notes](docs/swiss-manager-format.md),
+preserve unidentified bytes, and check boundaries, references, missing values,
+dates, and score units. Add regression or edge-case tests for behavior changes.
+
+Tests must run offline; browser tests intercept requests. Keep local binaries and
+reference snapshots in `tests/fixtures/`, which is ignored by Git and excluded
+from distributions. Never force-add fixtures. Tests requiring missing fixtures
+or browser installations skip; use synthetic data for portable coverage.
+
+## Releasing
+
+1. Prepare `release/v<version>` with matching versions in `pyproject.toml` and
+   `citations.cff`, dated release notes in `CHANGELOG.md`, and updated README text.
+2. Merge the preparation PR into `main` and confirm CI passes.
+3. Tag the release commit on `main` and push that tag:
+
+   ```sh
+   git switch main
+   git pull --ff-only
+   git tag -a v0.1.0 -m "Release v0.1.0"
+   git push origin v0.1.0
+   ```
+
+The [Publish workflow](.github/workflows/publish.yml) runs on `v*` tag pushes.
+It verifies that the tagged commit belongs to `main` and the tag matches the
+package version, builds and tests the wheel, then publishes the same artifacts
+to TestPyPI followed by PyPI. Publishing uses the existing Trusted Publishers
+and GitHub environments. Creating a GitHub release does not trigger publishing.
+
+Published versions are immutable. For a partial workflow failure, rerun failed
+jobs; use a new version for changed distributions rather than moving a release tag.
