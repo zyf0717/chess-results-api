@@ -1,0 +1,12 @@
+cff-version: 1.2.0
+message: "If you use this software in your work, please cite it using this metadata."
+type: software
+title: chess-results-api
+authors:
+  - family-names: Zheng
+    given-names: Yifei
+    email: zyf0717@gmail.com
+version: 0.1.0
+abstract: "A Python package for decoding Chess-Results tournament data into typed records."
+repository-code: "https://github.com/zyf0717/chess-results-api"
+license: Apache-2.0

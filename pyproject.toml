@@ -29,7 +29,16 @@ dev = ["pytest>=8", "ruff>=0.11"]
 packages = ["src/chess_results_api"]
 
 [tool.hatch.build.targets.sdist]
-include = ["/src", "/tests/*.py", "/README.md", "/LICENSE", "/pyproject.toml"]
+include = [
+    "/src",
+    "/tests/*.py",
+    "/docs",
+    "/README.md",
+    "/CONTRIBUTING.md",
+    "/citations.cff",
+    "/LICENSE",
+    "/pyproject.toml",
+]
 exclude = ["/tests/fixtures"]
 
 [tool.pytest.ini_options]
