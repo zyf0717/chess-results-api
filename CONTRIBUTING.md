@@ -72,5 +72,8 @@ uv build
 ```
 
 Tests requiring optional local fixtures may skip when those files are absent.
+GitHub Actions runs these checks on Ubuntu with Python 3.12–3.14, and on Windows
+and macOS with Python 3.12. CI installs Chromium for the offline browser tests;
+local binary and reference fixtures are absent, so their tests skip.
 Describe the behavior changed, the supporting evidence, and the checks run in
 the pull request. Use a Conventional Commit title for squash merges.
