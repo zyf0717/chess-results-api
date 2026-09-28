@@ -8,12 +8,16 @@ version = "0.1.0"
 description = "Download Chess-Results tournament files and decode them into typed Python records."
 readme = "README.md"
 requires-python = ">=3.12"
+authors = [{name = "Yifei Zheng", email = "zyf0717@gmail.com"}]
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Games/Entertainment :: Board Games",
     "Typing :: Typed",
 ]
@@ -21,6 +25,9 @@ dependencies = []
 
 [project.urls]
 Repository = "https://github.com/zyf0717/chess-results-api"
+Documentation = "https://github.com/zyf0717/chess-results-api#readme"
+Issues = "https://github.com/zyf0717/chess-results-api/issues"
+Changelog = "https://github.com/zyf0717/chess-results-api/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 browser = [
@@ -40,6 +47,7 @@ include = [
     "/docs",
     "/README.md",
     "/CONTRIBUTING.md",
+    "/CHANGELOG.md",
     "/citations.cff",
     "/LICENSE",
     "/pyproject.toml",
