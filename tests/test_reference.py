@@ -16,7 +16,9 @@ def _rows(path: Path) -> list[list[str]]:
             " ".join(unescape(re.sub("<[^>]*>", " ", cell)).split())
             for cell in re.findall(r"<t[dh]\b[^>]*>(.*?)</t[dh]>", row, re.S)
         ]
-        for row in re.findall(r"<tr\b[^>]*>(.*?)</tr>", path.read_text("utf-8-sig"), re.S)
+        for row in re.findall(
+            r"<tr\b[^>]*>(.*?)</tr>", path.read_text("utf-8-sig"), re.S
+        )
     ]
 
 
@@ -51,8 +53,12 @@ def test_published_scores(suffix: str, count: int) -> None:
         for round_ in tournament.rounds:
             for match in round_.matches:
                 if match.board_points is not None:
-                    totals[tournament.teams[match.first_team - 1].name] += match.board_points[0]
-                    totals[tournament.teams[match.second_team - 1].name] += match.board_points[1]
+                    totals[tournament.teams[match.first_team - 1].name] += (
+                        match.board_points[0]
+                    )
+                    totals[tournament.teams[match.second_team - 1].name] += (
+                        match.board_points[1]
+                    )
         for cells in _rows(reference):
             if len(cells) == 16 and cells[0].isdigit():
                 expected[cells[1]] = float(cells[13].replace(",", "."))
@@ -70,6 +76,8 @@ def test_published_scores(suffix: str, count: int) -> None:
         for cells in rows:
             if len(cells) == len(header) and cells[number_column].isdigit():
                 # Do not drop rows for participants omitted from the ranking.
-                expected[cells[number_column]] = float(cells[points_column].replace(",", "."))
+                expected[cells[number_column]] = float(
+                    cells[points_column].replace(",", ".")
+                )
     assert len(expected) == count
     assert totals == expected

@@ -35,7 +35,9 @@ from .helpers import (
         (250, None, False),
     ],
 )
-def test_results_and_team_orientation(code: int, points: tuple | None, played: bool) -> None:
+def test_results_and_team_orientation(
+    code: int, points: tuple | None, played: bool
+) -> None:
     tournament = decode_tournament(_paired_document(games=_game(2, 1, code)))
     round_ = tournament.rounds[0]
     game = round_.games[0]
@@ -117,9 +119,13 @@ def test_invalid_round_records(overrides: dict, message: str) -> None:
         (-2, 250, None),
     ],
 )
-def test_individual_special_pairings(opponent: int, result: int, points: tuple | None) -> None:
+def test_individual_special_pairings(
+    opponent: int, result: int, points: tuple | None
+) -> None:
     game = (
-        decode_tournament(_individual_document(games=_game(1, opponent, result))).rounds[0].games[0]
+        decode_tournament(_individual_document(games=_game(1, opponent, result)))
+        .rounds[0]
+        .games[0]
     )
     assert game.black_player == opponent
     assert game.points == points
@@ -128,12 +134,16 @@ def test_individual_special_pairings(opponent: int, result: int, points: tuple |
 
 
 def test_bye_result_is_only_scored_for_a_bye_opponent() -> None:
-    game = decode_tournament(_individual_document(games=_game(1, 2, 9))).rounds[0].games[0]
+    game = (
+        decode_tournament(_individual_document(games=_game(1, 2, 9))).rounds[0].games[0]
+    )
     assert game.result == GameResult.BYE
     assert game.points is None
 
 
-@pytest.mark.parametrize("white,black", [(0, 2), (1, 0), (3, 2), (1, 3), (1, -3), (1, 1)])
+@pytest.mark.parametrize(
+    "white,black", [(0, 2), (1, 0), (3, 2), (1, 3), (1, -3), (1, 1)]
+)
 def test_invalid_individual_references(white: int, black: int) -> None:
     with pytest.raises(SwissManagerDecodeError):
         decode_tournament(_individual_document(games=_game(white, black)))

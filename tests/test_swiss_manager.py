@@ -76,7 +76,11 @@ def test_player_and_team_fields() -> None:
         "Z. Example",
     )
     assert (record.title, record.federation, record.rating) == ("IM", "UZB", 2400)
-    assert (record.fide_id, record.team_number, record.board_number) == (123456789, 1, 4)
+    assert (record.fide_id, record.team_number, record.board_number) == (
+        123456789,
+        1,
+        4,
+    )
     assert tournament.teams[record.team_number - 1].name == "Example team"
     assert tournament.teams[0].captain == "Captain"
 
@@ -87,7 +91,9 @@ def test_missing_identifiers_and_ratings_remain_zero() -> None:
     assert record.rating == record.fide_id == 0
 
 
-@pytest.mark.parametrize("data", [b"", b"not a Swiss-Manager file", bytes(200), _document()[:-1]])
+@pytest.mark.parametrize(
+    "data", [b"", b"not a Swiss-Manager file", bytes(200), _document()[:-1]]
+)
 def test_rejects_bad_envelopes(data: bytes) -> None:
     with pytest.raises(SwissManagerDecodeError):
         decode_tournament(data)
@@ -156,7 +162,9 @@ def test_unknown_record_bytes_are_preserved() -> None:
     ],
 )
 def test_partial_birth_dates(value: int, expected: PartialDate | None) -> None:
-    player = decode_tournament(_document(player=_player(0, birth_date=value))).players[0]
+    player = decode_tournament(_document(player=_player(0, birth_date=value))).players[
+        0
+    ]
     assert player.birth_date == expected
 
 
@@ -169,7 +177,9 @@ def test_invalid_birth_dates(value: int) -> None:
 @pytest.mark.parametrize("value", [20260229, 20260000])
 def test_invalid_schedule_dates(value: int) -> None:
     with pytest.raises(SwissManagerDecodeError, match="date"):
-        decode_tournament(_paired_document(schedule=_schedule(1, 1, scheduled_date=value)))
+        decode_tournament(
+            _paired_document(schedule=_schedule(1, 1, scheduled_date=value))
+        )
 
 
 def test_truncated_configuration() -> None:

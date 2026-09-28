@@ -57,9 +57,13 @@ def test_local_juvenil_femenino() -> None:
     tournament = load_local_tournament("TURX")
     assert tournament.tournament_id == 1499104
     assert tournament.players[0].first_name == "Gabriela"
-    assert all(r.scheduled_date is None and r.start_time == "" for r in tournament.rounds)
+    assert all(
+        r.scheduled_date is None and r.start_time == "" for r in tournament.rounds
+    )
     opponents = [
-        frozenset((g.white_player, g.black_player)) for r in tournament.rounds for g in r.games
+        frozenset((g.white_player, g.black_player))
+        for r in tournament.rounds
+        for g in r.games
     ]
     assert len(set(opponents)) == 15
 
@@ -69,7 +73,9 @@ def test_local_croatian_league() -> None:
     assert tournament.tournament_id == 1356710
     assert tournament.configuration.boards_per_match == 6
     assert sum(len(r.matches) for r in tournament.rounds) == 45
-    empty = Counter(r.number for r in tournament.rounds for g in r.games if not g.white_player)
+    empty = Counter(
+        r.number for r in tournament.rounds for g in r.games if not g.white_player
+    )
     assert empty == {1: 6, 2: 6, 3: 6, 4: 6, 5: 6, 6: 6, 7: 30, 8: 30, 9: 30}
     assert all(m.board_points is None for r in tournament.rounds[6:] for m in r.matches)
 
@@ -81,8 +87,17 @@ def test_local_olympiad() -> None:
     assert tournament.metadata.section == "Open"
     assert tournament.metadata.location == "Samarkand"
     caruana = tournament.players[0]
-    assert (caruana.last_name, caruana.first_name, caruana.title) == ("Caruana", "Fabiano", "GM")
-    assert (caruana.rating, caruana.fide_id, caruana.team_number, caruana.board_number) == (
+    assert (caruana.last_name, caruana.first_name, caruana.title) == (
+        "Caruana",
+        "Fabiano",
+        "GM",
+    )
+    assert (
+        caruana.rating,
+        caruana.fide_id,
+        caruana.team_number,
+        caruana.board_number,
+    ) == (
         2789,
         2020009,
         1,
@@ -119,7 +134,10 @@ def test_local_olympiad() -> None:
     bye = tournament.rounds[2].matches[102]
     assert (bye.first_team, bye.second_team, bye.board_points) == (205, -1, (2, 0))
     empty_slots = [
-        g for r in tournament.rounds for g in r.games if not all((g.white_player, g.black_player))
+        g
+        for r in tournament.rounds
+        for g in r.games
+        if not all((g.white_player, g.black_player))
     ]
     assert len(empty_slots) == 2
     assert all(g.match_number == 56 for g in empty_slots)

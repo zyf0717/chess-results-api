@@ -26,7 +26,13 @@ def serve(monkeypatch):
     new_context = api.Browser.new_context
 
     def setup(
-        *, payload=None, details=True, link=True, status=200, network_error=False, assets=False
+        *,
+        payload=None,
+        details=True,
+        link=True,
+        status=200,
+        network_error=False,
+        assets=False,
     ):
         requests = []
         data = _document() if payload is None else payload
@@ -43,16 +49,27 @@ def serve(monkeypatch):
                     content_type="application/javascript",
                     body="""
                         const image = new Image();
-                        const imageDone = new Promise(resolve => { image.onerror = resolve; });
+                        const imageDone = new Promise(resolve => {
+                            image.onerror = resolve;
+                        });
                         image.src = '/decoration.png';
-                        const font = new FontFace('Decoration', 'url(/decoration.woff2)');
+                        const font = new FontFace(
+                            'Decoration', 'url(/decoration.woff2)'
+                        );
                         const media = document.createElement('video');
-                        const mediaDone = new Promise(resolve => { media.onerror = resolve; });
+                        const mediaDone = new Promise(resolve => {
+                            media.onerror = resolve;
+                        });
                         media.src = '/decoration.mp4';
                         media.load();
-                        Promise.allSettled([imageDone, font.load(), mediaDone, fetch('/state')])
+                        Promise.allSettled([
+                            imageDone, font.load(), mediaDone, fetch('/state')
+                        ])
                             .then(() => {
-                                document.querySelector('#cb_alleDetails').disabled = false;
+                                const button = document.getElementById(
+                                    'cb_alleDetails'
+                                );
+                                button.disabled = false;
                             });
                     """,
                 )
@@ -65,7 +82,9 @@ def serve(monkeypatch):
                 route.fulfill(
                     body=data,
                     content_type="application/octet-stream",
-                    headers={"Content-Disposition": 'attachment; filename="event.TUMX"'},
+                    headers={
+                        "Content-Disposition": 'attachment; filename="event.TUMX"'
+                    },
                 )
                 return
             if url.path != "/tnr12345.aspx":
@@ -91,7 +110,8 @@ def serve(monkeypatch):
                         "cb_alleDetails": ["Show tournament details"],
                     }
                 body = (
-                    '<a href="/DownloadTurnier.Aspx?art=1">Swiss-Manager tournamentfile</a>'
+                    '<a href="/DownloadTurnier.Aspx?art=1">'
+                    "Swiss-Manager tournamentfile</a>"
                     if link
                     else "No file available"
                 )
@@ -114,7 +134,9 @@ def serve(monkeypatch):
 
 
 @pytest.mark.parametrize("details", [False, True])
-def test_download_preserves_session_and_form_state(serve, tmp_path: Path, details: bool) -> None:
+def test_download_preserves_session_and_form_state(
+    serve, tmp_path: Path, details: bool
+) -> None:
     requests = serve(details=details)
     path = tmp_path / "event.TUMX"
     assert download_tournament(12345, path) == path
@@ -129,10 +151,14 @@ def test_downloads_use_separate_sessions(serve, tmp_path: Path) -> None:
     requests = serve()
     for name in ("first", "second"):
         download_tournament(12345, tmp_path / name)
-    assert len(requests) == 6  # The route also checks each initial request has no cookie.
+    assert (
+        len(requests) == 6
+    )  # The route also checks each initial request has no cookie.
 
 
-def test_blocks_visual_resources_but_preserves_navigation_scripts(serve, tmp_path: Path) -> None:
+def test_blocks_visual_resources_but_preserves_navigation_scripts(
+    serve, tmp_path: Path
+) -> None:
     requests = serve(assets=True)
     path = download_tournament(12345, tmp_path / "event")
     assert path.read_bytes() == _document()
@@ -150,12 +176,16 @@ def test_blocks_visual_resources_but_preserves_navigation_scripts(serve, tmp_pat
 def test_browser_failure(serve, tmp_path: Path) -> None:
     serve(network_error=True)
     path = tmp_path / "event"
-    with pytest.raises(TournamentDownloadError, match="Could not download tournament 12345"):
+    with pytest.raises(
+        TournamentDownloadError, match="Could not download tournament 12345"
+    ):
         download_tournament(12345, path)
     assert not path.exists()
 
 
-@pytest.mark.parametrize("status,link,message", [(503, True, "HTTP 503"), (200, False, "no Swiss")])
+@pytest.mark.parametrize(
+    "status,link,message", [(503, True, "HTTP 503"), (200, False, "no Swiss")]
+)
 def test_unavailable_download_preserves_destination(
     serve, tmp_path: Path, status: int, link: bool, message: str
 ) -> None:
@@ -171,10 +201,14 @@ def test_unavailable_download_preserves_destination(
     "payload",
     [
         b"<html>Error</html>",
-        _document().replace((12345).to_bytes(4, "little"), (54321).to_bytes(4, "little"), 1),
+        _document().replace(
+            (12345).to_bytes(4, "little"), (54321).to_bytes(4, "little"), 1
+        ),
     ],
 )
-def test_rejects_invalid_or_wrong_tournament(serve, tmp_path: Path, payload: bytes) -> None:
+def test_rejects_invalid_or_wrong_tournament(
+    serve, tmp_path: Path, payload: bytes
+) -> None:
     serve(payload=payload)
     path = tmp_path / "event"
     with pytest.raises((SwissManagerDecodeError, TournamentDownloadError)):
