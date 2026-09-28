@@ -63,11 +63,19 @@ records; scheduled rounds need not be paired or completed.
 | 3 / 5 | Black win / win by forfeit | 0 / 1 |
 | 6 | Double forfeit | 0 / 0 |
 | 9 | Individual bye | 1 / `None` |
+| 10 | Double zero | 0 / 0 |
 
 Codes 1–6 match the [user guide, page 12](https://swiss-manager.at/unload/swiss_manager_user_guide.pdf).
 Unknown codes remain unscored. Special individual entries have no opponent score:
 code 3 gives `(0.0, None)`, code 2 gives `(0.5, None)`, and code 0 gives
 `points=None`. Code 9 with an ordinary opponent remains unscored.
+
+Code 10 is distinct from double forfeit: the 2024 Women's Olympiad
+[round 7, board 60.4](https://chess-results.com/tnr967172.aspx?lan=1&art=3&rd=7)
+shows Takayasu–Aayat as 0–0; Pakistan–Japan totals `(1.0, 2.0)` in file order.
+The [reported TUMX evidence](https://github.com/zyf0717/chess-results-api/issues/3)
+records its code and checksum. `played` recognizes only codes 1–3 with both players
+present; code 10 remains excluded without implying a forfeit.
 
 TUTX assigns a fixed block of `boards_per_match` games to each match. Empty
 `(white=0, black=0, result=0)` slots are retained and unscored. TUMX links games

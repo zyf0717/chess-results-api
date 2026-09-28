@@ -68,6 +68,15 @@ Browser failures or unavailable downloads raise `TournamentDownloadError`;
 unsupported binaries raise `SwissManagerDecodeError`. Options include
 `timeout=30` (seconds per browser operation) and `headless=False`.
 
+For in-memory use, `download_tournament_bytes(id, **options)` returns validated
+bytes ready for `decode_tournament(data)` or caller-managed storage.
+
+`TournamentDownloadError` exposes `tournament_id`, `http_status` (when available),
+and `reason`: `"unavailable"` (no file link), `"http"`, `"browser"`, or
+`"id_mismatch"`. Missing links describe current availability. Browser errors
+preserve `__cause__`; retry policy depends on the cause, such as a timeout or a
+missing Chromium installation.
+
 ## Development
 
 From a repository checkout:

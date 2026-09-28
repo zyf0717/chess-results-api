@@ -9,7 +9,9 @@ import pytest
 from chess_results_api import (
     SwissManagerDecodeError,
     TournamentDownloadError,
+    decode_tournament,
     download_tournament,
+    download_tournament_bytes,
     load_tournament,
 )
 
@@ -33,6 +35,7 @@ def serve(monkeypatch):
         status=200,
         network_error=False,
         assets=False,
+        download=True,
     ):
         requests = []
         data = _document() if payload is None else payload
@@ -79,6 +82,9 @@ def serve(monkeypatch):
                 return
             if url.path.lower() == "/downloadturnier.aspx":
                 assert "tournament=12345" in request.headers.get("cookie", "")
+                if not download:
+                    route.fulfill(content_type="text/html", body="No download")
+                    return
                 route.fulfill(
                     body=data,
                     content_type="application/octet-stream",
@@ -156,6 +162,14 @@ def test_downloads_use_separate_sessions(serve, tmp_path: Path) -> None:
     )  # The route also checks each initial request has no cookie.
 
 
+@pytest.mark.parametrize("details", [False, True])
+def test_download_bytes(serve, details: bool) -> None:
+    serve(details=details)
+    data = download_tournament_bytes(12345)
+    assert data == _document()
+    assert decode_tournament(data).tournament_id == 12345
+
+
 def test_blocks_visual_resources_but_preserves_navigation_scripts(
     serve, tmp_path: Path
 ) -> None:
@@ -178,42 +192,80 @@ def test_browser_failure(serve, tmp_path: Path) -> None:
     path = tmp_path / "event"
     with pytest.raises(
         TournamentDownloadError, match="Could not download tournament 12345"
-    ):
+    ) as caught:
         download_tournament(12345, path)
+    assert caught.value.reason == "browser"
+    assert caught.value.tournament_id == 12345
+    assert caught.value.http_status is None
+    assert caught.value.__cause__ is not None
     assert not path.exists()
 
 
+def test_download_timeout(serve) -> None:
+    from playwright.sync_api import TimeoutError
+
+    serve(download=False)
+    with pytest.raises(TournamentDownloadError) as caught:
+        download_tournament_bytes(12345, timeout=1)
+    assert caught.value.reason == "browser"
+    assert caught.value.tournament_id == 12345
+    assert isinstance(caught.value.__cause__, TimeoutError)
+
+
 @pytest.mark.parametrize(
-    "status,link,message", [(503, True, "HTTP 503"), (200, False, "no Swiss")]
+    "status,link,message,reason",
+    [(503, True, "HTTP 503", "http"), (200, False, "no Swiss", "unavailable")],
 )
 def test_unavailable_download_preserves_destination(
-    serve, tmp_path: Path, status: int, link: bool, message: str
+    serve, tmp_path: Path, status: int, link: bool, message: str, reason: str
 ) -> None:
     serve(status=status, link=link)
     path = tmp_path / "existing"
     path.write_bytes(b"existing content")
-    with pytest.raises(TournamentDownloadError, match=message):
+    with pytest.raises(TournamentDownloadError, match=message) as caught:
         download_tournament(12345, path)
+    assert caught.value.reason == reason
+    assert caught.value.tournament_id == 12345
+    assert caught.value.http_status == (status if reason == "http" else None)
     assert path.read_bytes() == b"existing content"
 
 
 @pytest.mark.parametrize(
-    "payload",
+    "payload,error",
     [
-        b"<html>Error</html>",
-        _document().replace(
-            (12345).to_bytes(4, "little"), (54321).to_bytes(4, "little"), 1
+        (b"<html>Error</html>", SwissManagerDecodeError),
+        (
+            _document().replace(
+                (12345).to_bytes(4, "little"), (54321).to_bytes(4, "little"), 1
+            ),
+            TournamentDownloadError,
         ),
     ],
 )
+@pytest.mark.parametrize("in_memory", [False, True])
 def test_rejects_invalid_or_wrong_tournament(
-    serve, tmp_path: Path, payload: bytes
+    serve, tmp_path: Path, payload: bytes, error: type[Exception], in_memory: bool
 ) -> None:
     serve(payload=payload)
     path = tmp_path / "event"
-    with pytest.raises((SwissManagerDecodeError, TournamentDownloadError)):
-        download_tournament(12345, path)
-    assert not path.exists()
+    path.write_bytes(b"existing content")
+    with pytest.raises(error) as caught:
+        if in_memory:
+            download_tournament_bytes(12345)
+        else:
+            download_tournament(12345, path)
+    if error is TournamentDownloadError:
+        assert caught.value.reason == "id_mismatch"
+        assert caught.value.tournament_id == 12345
+        assert caught.value.http_status is None
+        assert "received 54321" in str(caught.value)
+    assert path.read_bytes() == b"existing content"
+
+
+def test_filesystem_error_propagates(serve, tmp_path: Path) -> None:
+    serve()
+    with pytest.raises(FileNotFoundError):
+        download_tournament(12345, tmp_path / "missing" / "event")
 
 
 @pytest.mark.parametrize("tournament_id", [0, -1, True, "12345", 1.5])

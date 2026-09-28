@@ -32,6 +32,7 @@ from .helpers import (
         (4, (1, 0), False),
         (5, (0, 1), False),
         (6, (0, 0), False),
+        (10, (0, 0), False),
         (250, None, False),
     ],
 )
@@ -43,12 +44,29 @@ def test_results_and_team_orientation(
     game = round_.games[0]
     assert game.points == points
     assert game.played is played
-    assert game.result == (GameResult(code) if code < 7 else None)
+    assert game.result_code == code
+    assert game.result == (None if code == 250 else GameResult(code))
     assert (game.number, game.match_number, game.board_number) == (1, 1, 1)
     assert round_.matches[0].games == (game,)
     assert round_.matches[0].board_points == (None if points is None else points[::-1])
     assert round_.scheduled_date == date(2026, 9, 16)
     assert round_.start_time == "15:00"
+
+
+def test_double_zero_match_total() -> None:
+    tournament = decode_tournament(
+        _paired_document(
+            boards=4,
+            player=b"".join(_player(team) for team in (1, 2) * 4),
+            player_count=8,
+            schedule=_schedule(4, 1),
+            games=_game(1, 2, 1) + _game(4, 3, 1) + _game(5, 6, 3) + _game(8, 7, 10),
+        )
+    )
+    match = tournament.rounds[0].matches[0]
+    assert match.board_points == (1.0, 2.0)
+    assert match.games[-1].result is GameResult.DOUBLE_ZERO
+    assert GameResult.DOUBLE_ZERO is not GameResult.DOUBLE_FORFEIT
 
 
 @pytest.mark.parametrize("missing", ["white", "black"])

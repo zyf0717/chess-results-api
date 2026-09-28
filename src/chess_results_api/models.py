@@ -114,6 +114,7 @@ class GameResult(IntEnum):
     BLACK_FORFEIT_WIN = 5
     DOUBLE_FORFEIT = 6
     BYE = 9
+    DOUBLE_ZERO = 10
 
     @property
     def points(self) -> tuple[float, float] | None:
@@ -126,6 +127,7 @@ class GameResult(IntEnum):
             self.BLACK_FORFEIT_WIN: (0.0, 1.0),
             self.DOUBLE_FORFEIT: (0.0, 0.0),
             self.BYE: (1.0, 0.0),
+            self.DOUBLE_ZERO: (0.0, 0.0),
         }.get(self)
 
 
@@ -168,6 +170,7 @@ class Game:
 
     @property
     def played(self) -> bool:
+        """Both players present with a standard win/draw/loss result (codes 1–3)."""
         return (
             self.white_player > 0
             and self.black_player > 0
