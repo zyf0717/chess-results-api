@@ -54,7 +54,8 @@ tournament = load_tournament(path)
 ```
 
 The downloader opens the details form and follows the file link in an isolated
-browser session. It validates the binary and tournament ID before writing the
+browser session, blocking images, fonts, and media to reduce page traffic.
+It validates the binary and tournament ID before writing the
 destination, replacing an existing file. The parent directory must exist.
 Browser failures or unavailable downloads raise `TournamentDownloadError`;
 unsupported binaries raise `SwissManagerDecodeError`. Options include

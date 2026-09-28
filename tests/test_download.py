@@ -25,7 +25,9 @@ def serve(monkeypatch):
             pytest.skip("Run playwright install chromium for offline browser tests")
     new_context = api.Browser.new_context
 
-    def setup(*, payload=None, details=True, link=True, status=200, network_error=False):
+    def setup(
+        *, payload=None, details=True, link=True, status=200, network_error=False, assets=False
+    ):
         requests = []
         data = _document() if payload is None else payload
 
@@ -36,6 +38,28 @@ def serve(monkeypatch):
                 route.abort("failed")
                 return
             url = urlsplit(request.url)
+            if url.path == "/required.js":
+                route.fulfill(
+                    content_type="application/javascript",
+                    body="""
+                        const image = new Image();
+                        const imageDone = new Promise(resolve => { image.onerror = resolve; });
+                        image.src = '/decoration.png';
+                        const font = new FontFace('Decoration', 'url(/decoration.woff2)');
+                        const media = document.createElement('video');
+                        const mediaDone = new Promise(resolve => { media.onerror = resolve; });
+                        media.src = '/decoration.mp4';
+                        media.load();
+                        Promise.allSettled([imageDone, font.load(), mediaDone, fetch('/state')])
+                            .then(() => {
+                                document.querySelector('#cb_alleDetails').disabled = false;
+                            });
+                    """,
+                )
+                return
+            if url.path == "/state":
+                route.fulfill(json={"ready": True})
+                return
             if url.path.lower() == "/downloadturnier.aspx":
                 assert "tournament=12345" in request.headers.get("cookie", "")
                 route.fulfill(
@@ -56,6 +80,9 @@ def serve(monkeypatch):
                     <input type="submit" id="cb_alleDetails" name="cb_alleDetails"
                            value="Show tournament details">
                 </form>"""
+                if assets:
+                    body = body.replace('type="submit"', 'type="submit" disabled')
+                    body += '<script src="/required.js"></script>'
             else:
                 if details:
                     assert request.method == "POST"
@@ -103,6 +130,21 @@ def test_downloads_use_separate_sessions(serve, tmp_path: Path) -> None:
     for name in ("first", "second"):
         download_tournament(12345, tmp_path / name)
     assert len(requests) == 6  # The route also checks each initial request has no cookie.
+
+
+def test_blocks_visual_resources_but_preserves_navigation_scripts(serve, tmp_path: Path) -> None:
+    requests = serve(assets=True)
+    path = download_tournament(12345, tmp_path / "event")
+    assert path.read_bytes() == _document()
+    # Blocked requests must never reach the simulated server. The form stays
+    # disabled until the script runs and all three resource requests settle.
+    assert [urlsplit(request.url).path for request in requests] == [
+        "/tnr12345.aspx",
+        "/required.js",
+        "/state",
+        "/tnr12345.aspx",
+        "/DownloadTurnier.Aspx",
+    ]
 
 
 def test_browser_failure(serve, tmp_path: Path) -> None:
