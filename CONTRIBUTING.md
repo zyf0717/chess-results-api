@@ -63,8 +63,8 @@ or browser installations skip; use synthetic data for portable coverage.
    ```sh
    git switch main
    git pull --ff-only
-   git tag -a v0.1.0 -m "Release v0.1.0"
-   git push origin v0.1.0
+   git tag -a v0.1.1 -m "Release v0.1.1"
+   git push origin v0.1.1
    ```
 
 The [Publish workflow](.github/workflows/publish.yml) runs on `v*` tag pushes.

@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.1 — 2026-09-28
 
 - Score result code 10 as a distinct double zero, including team totals.
 - Add validated `download_tournament_bytes` and structured download error details.
