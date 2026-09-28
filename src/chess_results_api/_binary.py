@@ -18,7 +18,9 @@ class _Reader:
     def read(self, size: int) -> bytes:
         start = self.position
         if start + size > self.end:
-            raise SwissManagerDecodeError(f"Truncated record at byte {start}: need {size} bytes")
+            raise SwissManagerDecodeError(
+                f"Truncated record at byte {start}: need {size} bytes"
+            )
         self.position += size
         return self.data[start : self.position]
 
@@ -31,7 +33,9 @@ class _Reader:
             try:
                 fields.append(value.decode("utf-16-le"))
             except UnicodeDecodeError as exc:
-                raise SwissManagerDecodeError(f"Invalid UTF-16 text at byte {start}") from exc
+                raise SwissManagerDecodeError(
+                    f"Invalid UTF-16 text at byte {start}"
+                ) from exc
         return tuple(fields)
 
 

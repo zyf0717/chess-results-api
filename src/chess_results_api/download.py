@@ -48,8 +48,12 @@ def download_tournament(
 
     try:
         with sync_playwright() as playwright:
-            with playwright.chromium.launch(headless=headless, timeout=timeout * 1000) as browser:
-                with browser.new_context(accept_downloads=True, service_workers="block") as context:
+            with playwright.chromium.launch(
+                headless=headless, timeout=timeout * 1000
+            ) as browser:
+                with browser.new_context(
+                    accept_downloads=True, service_workers="block"
+                ) as context:
                     context.set_default_timeout(timeout * 1000)
                     context.route("**/*", _filter_requests)
                     data = _download(context.new_page(), tournament_id)

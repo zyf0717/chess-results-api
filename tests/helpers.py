@@ -62,7 +62,13 @@ def _document(
             round_count,
             int(bool(player)) if player_count is None else player_count,
         )
-        pack_into("<HH", config, 51, int(bool(team)) if team_count is None else team_count, boards)
+        pack_into(
+            "<HH",
+            config,
+            51,
+            int(bool(team)) if team_count is None else team_count,
+            boards,
+        )
         configuration = bytes(config)
     data = header + _strings(*fields) + configuration
     offsets = []

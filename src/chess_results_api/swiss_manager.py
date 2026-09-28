@@ -91,7 +91,9 @@ def _round_pairings(
         for team in (first, second):
             if team > 0:
                 if team in match_by_team:
-                    raise SwissManagerDecodeError("Team paired more than once in a round")
+                    raise SwissManagerDecodeError(
+                        "Team paired more than once in a round"
+                    )
                 match_by_team[team] = len(team_matches)
         team_matches.append((first, second, raw))
 
@@ -101,7 +103,9 @@ def _round_pairings(
         not configuration.boards_per_match
         or len(game_data) != len(team_matches) * configuration.boards_per_match * 21
     ):
-        raise SwissManagerDecodeError("Round-robin board slots do not match team pairings")
+        raise SwissManagerDecodeError(
+            "Round-robin board slots do not match team pairings"
+        )
     games = []
     seen_players: set[int] = set()
     for offset in range(0, len(game_data), 21):
@@ -127,11 +131,20 @@ def _round_pairings(
             if not teams and result != 0:
                 raise SwissManagerDecodeError("Result reported for an empty board slot")
         else:
-            if not teams or len(teams) != len(set(teams)) or None in indexes or len(indexes) != 1:
-                raise SwissManagerDecodeError("Board game does not identify a unique team match")
+            if (
+                not teams
+                or len(teams) != len(set(teams))
+                or None in indexes
+                or len(indexes) != 1
+            ):
+                raise SwissManagerDecodeError(
+                    "Board game does not identify a unique team match"
+                )
             index = match_by_team[teams[0]]
         if team_matches[index][1] < 0:
-            raise SwissManagerDecodeError("Board game assigned to a bye or unpaired team")
+            raise SwissManagerDecodeError(
+                "Board game assigned to a bye or unpaired team"
+            )
         game = Game(
             number=len(games) + 1,
             white_player=white,
@@ -156,9 +169,13 @@ def _round_pairings(
         points = (
             stored_points
             if second < 0
-            else _match_points(match_games, first, players, configuration.boards_per_match)
+            else _match_points(
+                match_games, first, players, configuration.boards_per_match
+            )
         )
-        matches.append(TeamMatch(number, first, second, match_games, points, stored_points, raw))
+        matches.append(
+            TeamMatch(number, first, second, match_games, points, stored_points, raw)
+        )
     return tuple(games), tuple(matches)
 
 
@@ -170,15 +187,23 @@ def _individual_pairings(data: bytes, player_count: int) -> tuple[Game, ...]:
         white, black, result = unpack_from("<HHB", raw)
         if black in (65534, 65535):
             black -= 65536
-        if not 1 <= white <= player_count or not (1 <= black <= player_count or black in (-1, -2)):
-            raise SwissManagerDecodeError("Invalid player reference in individual pairing")
+        if not 1 <= white <= player_count or not (
+            1 <= black <= player_count or black in (-1, -2)
+        ):
+            raise SwissManagerDecodeError(
+                "Invalid player reference in individual pairing"
+            )
         for player in (white, black):
             if player > 0:
                 if player in seen:
-                    raise SwissManagerDecodeError("Player paired more than once in a round")
+                    raise SwissManagerDecodeError(
+                        "Player paired more than once in a round"
+                    )
                 seen.add(player)
         number = len(games) + 1
-        games.append(Game(number, white, black, result, None, number if black > 0 else None, raw))
+        games.append(
+            Game(number, white, black, result, None, number if black > 0 else None, raw)
+        )
     return tuple(games)
 
 
@@ -201,7 +226,9 @@ def _rounds(
         game_data = game_reader.read(game_count * 21)
         match_data = match_reader.read(match_count * 15)
         if configuration.tournament_type.is_team:
-            games, matches = _round_pairings(game_data, match_data, players, configuration)
+            games, matches = _round_pairings(
+                game_data, match_data, players, configuration
+            )
         else:
             games = _individual_pairings(game_data, len(players))
             matches = ()
@@ -218,8 +245,13 @@ def _rounds(
         )
     if len(rounds) != configuration.round_count:
         raise SwissManagerDecodeError("Round count does not match schedule")
-    if game_reader.position != game_reader.end or match_reader.position != match_reader.end:
-        raise SwissManagerDecodeError("Pairing records left over after reading all rounds")
+    if (
+        game_reader.position != game_reader.end
+        or match_reader.position != match_reader.end
+    ):
+        raise SwissManagerDecodeError(
+            "Pairing records left over after reading all rounds"
+        )
     return tuple(rounds)
 
 
@@ -247,7 +279,13 @@ def decode_tournament(data: bytes) -> Tournament:
             raise SwissManagerDecodeError("Unsupported tournament directory layout")
         boundaries = (*offsets[:5], directory)
         markers = (0xA3, 0xA5, 0xB3, 0xB5, 0xC3)
-        section_names = ("schedule", "players", "player_pairings", "teams", "team_pairings")
+        section_names = (
+            "schedule",
+            "players",
+            "player_pairings",
+            "teams",
+            "team_pairings",
+        )
     else:
         if offsets[3] != directory or offsets[6] != 0:
             raise SwissManagerDecodeError("Unsupported tournament directory layout")
@@ -258,7 +296,9 @@ def decode_tournament(data: bytes) -> Tournament:
         raise SwissManagerDecodeError("Invalid tournament section offsets")
     for offset, marker in zip(boundaries[:-1], markers, strict=True):
         if data[offset : offset + 4] != bytes((marker, 0xFF, 0x89, 0x44)):
-            raise SwissManagerDecodeError(f"Unexpected tournament section marker at byte {offset}")
+            raise SwissManagerDecodeError(
+                f"Unexpected tournament section marker at byte {offset}"
+            )
 
     reader = _Reader(data, 108, boundaries[0])
     fields = reader.strings(132)
@@ -267,9 +307,13 @@ def decode_tournament(data: bytes) -> Tournament:
         raise SwissManagerDecodeError("Unsupported tournament header layout")
     settings = _configuration(data[configuration : boundaries[0]])
     if settings.tournament_type.is_team != has_teams:
-        raise SwissManagerDecodeError("Tournament type conflicts with directory sections")
+        raise SwissManagerDecodeError(
+            "Tournament type conflicts with directory sections"
+        )
     if not has_teams and (settings.team_count or settings.boards_per_match):
-        raise SwissManagerDecodeError("Team configuration found in an individual tournament")
+        raise SwissManagerDecodeError(
+            "Team configuration found in an individual tournament"
+        )
     metadata = TournamentMetadata(
         name=fields[0],
         section=fields[1],
@@ -315,11 +359,18 @@ def decode_tournament(data: bytes) -> Tournament:
             fields = reader.strings(5)
             tail = reader.read(96)
             teams.append(
-                Team(*fields, number=len(teams) + 1, text_fields=fields, numeric_data=tail)
+                Team(
+                    *fields,
+                    number=len(teams) + 1,
+                    text_fields=fields,
+                    numeric_data=tail,
+                )
             )
 
     if len(players) != settings.player_count or len(teams) != settings.team_count:
-        raise SwissManagerDecodeError("Player or team count does not match configuration")
+        raise SwissManagerDecodeError(
+            "Player or team count does not match configuration"
+        )
     if any(not 0 <= player.team_number <= len(teams) for player in players):
         raise SwissManagerDecodeError("Invalid player team reference")
 

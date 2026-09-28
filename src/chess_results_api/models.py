@@ -168,7 +168,11 @@ class Game:
 
     @property
     def played(self) -> bool:
-        return self.white_player > 0 and self.black_player > 0 and self.result_code in (1, 2, 3)
+        return (
+            self.white_player > 0
+            and self.black_player > 0
+            and self.result_code in (1, 2, 3)
+        )
 
 
 @dataclass(frozen=True, slots=True)
