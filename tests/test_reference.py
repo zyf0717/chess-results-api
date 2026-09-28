@@ -6,7 +6,20 @@ from pathlib import Path
 
 import pytest
 
-from chess_results_api.tumx import load_tumx
+from chess_results_api import load_tournament
+
+from .helpers import LOCAL_BINARIES
+
+
+def _rows(path: Path) -> list[list[str]]:
+    """Read cells from fixed reference snapshots, not arbitrary live pages."""
+    return [
+        [
+            " ".join(unescape(re.sub("<[^>]*>", " ", cell)).split())
+            for cell in re.findall(r"<t[dh]\b[^>]*>(.*?)</t[dh]>", row, re.S)
+        ]
+        for row in re.findall(r"<tr\b[^>]*>(.*?)</tr>", path.read_text("utf-8-sig"), re.S)
+    ]
 
 
 def test_local_published_board_point_totals() -> None:
@@ -15,7 +28,7 @@ def test_local_published_board_point_totals() -> None:
     reference = fixtures / "standings-reference.html"
     if not source.is_file() or not reference.is_file():
         pytest.skip("Optional local tournament and published standings snapshot are required")
-    tournament = load_tumx(source)
+    tournament = load_tournament(source)
     totals = {team.number: 0.0 for team in tournament.teams}
     for round_ in tournament.rounds:
         for match in round_.matches:
@@ -24,16 +37,49 @@ def test_local_published_board_point_totals() -> None:
             if match.second_team > 0:
                 totals[match.second_team] += match.board_points[1]
 
-    # This is a fixed reference snapshot, not a general Chess-Results HTML client.
     expected = {}
-    for row in re.findall(r"<tr\b[^>]*>(.*?)</tr>", reference.read_text("utf-8-sig"), re.S):
-        cells = [
-            " ".join(unescape(re.sub("<[^>]*>", " ", cell)).split())
-            for cell in re.findall(r"<td\b[^>]*>(.*?)</td>", row, re.S)
-        ]
+    for cells in _rows(reference):
         if len(cells) == 14 and cells[0].isdigit() and cells[1].isdigit():
             number = int(cells[1])
             assert number not in expected
             expected[number] = float(cells[-2].replace(",", "."))
     assert len(expected) == 206
+    assert totals == expected
+
+
+@pytest.mark.parametrize("suffix,count", [("TUNX", 74), ("TURX", 6), ("TUTX", 10)])
+def test_new_formats_against_published_scores(suffix: str, count: int) -> None:
+    fixtures = Path(__file__).parent / "fixtures"
+    source = fixtures / LOCAL_BINARIES[suffix]
+    reference = fixtures / f"{suffix.lower()}-reference.html"
+    if not source.is_file() or not reference.is_file():
+        pytest.skip(f"Optional local {suffix} binary and published reference are required")
+    tournament = load_tournament(source)
+    expected = {}
+    if tournament.tournament_type.is_team:
+        totals = {team.name: 0.0 for team in tournament.teams}
+        for round_ in tournament.rounds:
+            for match in round_.matches:
+                if match.board_points is not None:
+                    totals[tournament.teams[match.first_team - 1].name] += match.board_points[0]
+                    totals[tournament.teams[match.second_team - 1].name] += match.board_points[1]
+        for cells in _rows(reference):
+            if len(cells) == 16 and cells[0].isdigit():
+                expected[cells[1]] = float(cells[13].replace(",", "."))
+    else:
+        totals = {str(player.number): 0.0 for player in tournament.players}
+        for round_ in tournament.rounds:
+            for game in round_.games:
+                if game.points is not None:
+                    totals[str(game.white_player)] += game.points[0]
+                    if game.black_player > 0:
+                        totals[str(game.black_player)] += game.points[1]
+        rows = _rows(reference)
+        header = next(cells for cells in rows if "SNo" in cells and "Pts." in cells)
+        number_column, points_column = header.index("SNo"), header.index("Pts.")
+        for cells in rows:
+            if len(cells) == len(header) and cells[number_column].isdigit():
+                # Do not drop rows for participants omitted from the ranking.
+                expected[cells[number_column]] = float(cells[points_column].replace(",", "."))
+    assert len(expected) == count
     assert totals == expected
