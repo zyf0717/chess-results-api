@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.1 — 2026-09-28
+
+- Score result code 10 as a distinct double zero, including team totals.
+- Add validated `download_tournament_bytes` and structured download error details.
+
 ## 0.1.0 — 2026-09-28
 
 Initial release for Python 3.12+.

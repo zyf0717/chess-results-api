@@ -68,6 +68,15 @@ Browser failures or unavailable downloads raise `TournamentDownloadError`;
 unsupported binaries raise `SwissManagerDecodeError`. Options include
 `timeout=30` (seconds per browser operation) and `headless=False`.
 
+For in-memory use, `download_tournament_bytes(id, **options)` returns validated
+bytes ready for `decode_tournament(data)` or caller-managed storage.
+
+`TournamentDownloadError` exposes `tournament_id`, `http_status` (when available),
+and `reason`: `"unavailable"` (no file link), `"http"`, `"browser"`, or
+`"id_mismatch"`. Missing links describe current availability. Browser errors
+preserve `__cause__`; retry policy depends on the cause, such as a timeout or a
+missing Chromium installation.
+
 ## Development
 
 From a repository checkout:
@@ -85,7 +94,7 @@ Local binaries and reference snapshots belong in `tests/fixtures/`, which is
 ignored by Git and excluded from distributions. Tests requiring missing fixtures
 skip; synthetic tests run offline without them. `uv build` creates distribution
 archives in `dist/`. Built wheels can be installed locally with
-`uv pip install dist/chess_results_api-0.1.0-py3-none-any.whl`.
+`uv pip install dist/chess_results_api-0.1.1-py3-none-any.whl`.
 Browser tests use intercepted requests and skip when Playwright or Chromium is absent.
 
 See [CONTRIBUTING.md](https://github.com/zyf0717/chess-results-api/blob/main/CONTRIBUTING.md)
