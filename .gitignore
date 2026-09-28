@@ -216,3 +216,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Local tournament data (not redistributed with the package)
+/tests/fixtures/
