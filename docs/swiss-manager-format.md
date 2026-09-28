@@ -1,128 +1,77 @@
-# Shared Swiss-Manager binary formats
+# Swiss-Manager format notes
 
-The public `load_tournament` and `decode_tournament` functions share one reader
-for TUNX, TURX, TUTX and TUMX. `models.py` contains common records; `_binary.py`
-contains bounded reads, date decoding, and the shared exception. All four formats
-use the shared API directly.
-
-These are observed layouts, not a complete vendor specification. The
+These layouts were inferred from local fixtures and checked against published
+results; they are not a complete vendor specification. The
 [Swiss-Manager manual](https://swiss-manager.at/unload/SwissManagerHelp_ENG.pdf)
-identifies the four extensions; the binary details below come from local files
-and comparisons with published results. Unidentified data is preserved verbatim.
+identifies the extensions. Unknown fields remain accessible as raw data, and
+concatenating `section.data` in order reproduces the input byte for byte.
 
-## Common layout and corrections
+## Binary layout
 
-The marker bytes, UTF-16LE strings, numeric endianness, participant records, and
-schedule fields described in [the TUMX notes](tumx-format.md) are shared across
-all four observed types. The expanded fixture set establishes two corrections:
+Integers are little-endian. Strings have a `uint16` UTF-16 code-unit count followed
+by UTF-16LE text. Section markers are a tag byte followed by `ff 89 44`.
 
-- After the 108-byte fixed header there are **132 length-prefixed strings**.
-  The Olympiad file's last 106 empty strings previously looked like 212 bytes of
-  padding. Abu Dhabi has additional arbiter text at string index 35. Skipping
-  fixed padding would misalign its configuration record.
-- Configuration offset **27** is the scheduled round count. Offset 21 can differ:
-  Abu Dhabi has seven scheduled rounds and the value six at offset 21. That
-  second value is not used to limit schedule decoding or classify completed games.
+| Section | Tag | Record structure |
+| --- | --- | --- |
+| Header | `93` | 108 fixed bytes, then 132 strings; tournament ID at byte 32 |
+| Configuration | `95` | Type, counts, dates, tie-break codes, and opaque settings |
+| Schedule | `a3` | Per round: 16 strings + 76 numeric bytes |
+| Players | `a5` | Per player: 18 strings + 134 numeric bytes |
+| Games | `b3` | Per game: two `uint16` references, result byte, 16 opaque bytes |
+| Teams | `b5` | Per team: five strings + 96 numeric bytes |
+| Team matches | `c3` | Per match: two `uint16` references, two `uint16` scores, seven opaque bytes |
+| Directory / end | `d3` / `e3` | 36 bytes: directory marker, seven `uint32` values, end marker |
 
-Configuration offset 15 contains the tournament type:
+Configuration offset 15 (`uint16`, relative to its marker) determines the format;
+filenames are not used for detection:
 
-| Value | Enum | Extension | Team sections |
+| Value | Extension | Format | Team sections |
 | ---: | --- | --- | --- |
-| 0 | `SWISS` | TUNX | Absent |
-| 1 | `ROUND_ROBIN` | TURX | Absent |
-| 2 | `TEAM_ROUND_ROBIN` | TUTX | Present |
-| 3 | `TEAM_SWISS` | TUMX | Present |
+| 0 | TUNX | Individual Swiss | Absent |
+| 1 | TURX | Individual round-robin | Absent |
+| 2 | TUTX | Team round-robin | Present |
+| 3 | TUMX | Team Swiss | Present |
 
-The decoder uses this value, validates it against the directory structure, and
-does not depend on the filename. Unknown type values are rejected.
+The directory stores offsets for schedule, players, games, optional teams and
+matches, then itself; unused entries are zero. Boundaries are read from these
+offsets, not found by scanning for markers.
 
-The trailing directory is always 36 bytes, with seven uint32 values between the
-directory and end markers. Team files use all five section offsets followed by
-the directory offset and zero. Individual files contain schedule, player, and
-game-section offsets, then the directory offset, then three zeros. There are no
-empty team sections to skip in individual files.
+Configuration offset **27** holds the scheduled round count; offset 21 must not
+be used to truncate the schedule. Each round's numeric block holds its date at
+0 (`uint32`) and game/match counts at 6/8 (`uint16`). These counts delimit pairing
+records; scheduled rounds need not be paired or completed.
 
-Schedule entries retain 16 strings and 76 numeric bytes. Game/match counts at
-numeric offsets 6 and 8 delimit each round's records. Individual match counts
-must be zero. There is no assumption that all scheduled rounds are paired,
-completed, or have the same record count. A zero schedule date yields `None` and
-an empty time string remains empty; neither is filled from the event dates.
+## References, results, and missing values
 
-## Individual pairings
+- Player/team references are one-based file positions, not rankings. Player `0`
+  is an empty slot. Second-team or individual black-player values `ffff` and
+  `fffe` become `-1` (bye) and `-2` (not paired); never use them as tuple indices.
+- Individual events have empty `teams` and round `matches`, and
+  `match_number=None`. Normal games use round-local pairing positions as board
+  numbers; special entries have `board_number=None`.
+- Dates use YYYYMMDD. Zero dates become `None`; partial birth dates preserve
+  unknown components, so `19920000` is a year alone. Round times remain local
+  strings without an inferred timezone. Zero ratings and FIDE IDs remain zero.
+- Player board numbers are roster positions; game board numbers refer to that
+  round. Stored pairing counts include byes, exclusions, and empty slots.
 
-TUNX and TURX use the same 21-byte game records as team tournaments. Player
-references are one-based indices into `Tournament.players`. Normal entries have
-two positive references and the usual result codes 0–6. The second reference may
-instead be `ffff` (-1, bye) or `fffe` (-2, not paired).
+| Result code | Meaning | White / black points |
+| ---: | --- | --- |
+| 0 | Unreported | `None` |
+| 1 / 4 | White win / win by forfeit | 1 / 0 |
+| 2 | Draw | ½ / ½ |
+| 3 / 5 | Black win / win by forfeit | 0 / 1 |
+| 6 | Double forfeit | 0 / 0 |
+| 9 | Individual bye | 1 / `None` |
 
-Abu Dhabi's completed byes use result code **9**, exposed as `GameResult.BYE`.
-Their points are `(1.0, None)`: the nonexistent opponent has no score. Completed
-not-paired entries use code 3, giving `(0.0, None)` without counting as played
-games. A draw code for a special entry gives `(0.5, None)`; this case is tested
-synthetically. Code 0 remains unreported, including future byes/exclusions, so
-its points are `None`. Unknown result codes also remain unscored. Code 9 with
-an ordinary opponent is retained but not scored.
+Codes 1–6 match the [user guide, page 12](https://swiss-manager.at/unload/swiss_manager_user_guide.pdf).
+Unknown codes remain unscored. Special individual entries have no opponent score:
+code 3 gives `(0.0, None)`, code 2 gives `(0.5, None)`, and code 0 gives
+`points=None`. Code 9 with an ordinary opponent remains unscored.
 
-Individual games have `match_number=None`. Their `board_number` is their
-round-local pairing position for normal pairings, or `None` for special entries.
-The `number` field includes every stored record, including exclusions. Individual
-events return empty teams and round-match tuples. Player team and roster-board
-fields are zero in the observed files.
-
-The TUNX fixture has five completed rounds, a paired but unreported sixth round,
-and only exclusion entries for round seven. It contains 258 pairing records;
-that count is not a count of played games. Pairing uniqueness is checked within
-each round, including special entries.
-
-## Team round-robin board slots
-
-TUTX stores a fixed block of `boards_per_match` games for each team match, in
-match order. The Croatian league has five matches of six board slots per round.
-Unassigned slots are `(white=0, black=0, result=0)`; future rounds contain only
-such slots. Earlier rounds also contain empty blocks for a team without a roster.
-These records must not be discarded or treated as reported 0–0 games.
-
-The reader links these placeholders by their position in the fixed block and
-checks any known players against the corresponding match's teams. It rejects
-inconsistent block lengths, conflicting player/team references, duplicate
-players, and nonzero results on entirely empty slots. Each game retains its raw
-bytes and round/match/board position. A match containing unreported slots has
-`board_points=None`.
-
-TUMX continues to link games through the players' teams, including its one-sided
-empty player slots; the fixed-block rule is not imposed on team Swiss files.
-
-## Regression files and independent references
-
-All fixtures remain local under `tests/fixtures/`, excluded from Git and archives.
-
-| File | Players | Teams | Rounds | Pairing/board records |
-| --- | ---: | ---: | ---: | ---: |
-| `41st_abu_dhabi_amateur_chess_tournament_1498717__1_.TUNX` | 74 | 0 | 7 | 258 |
-| `juvenil_femenino_c_1499104.TURX` | 6 | 0 | 5 | 15 |
-| `4_hsl_jug_seniori_2026_jesenski_1356710.TUTX` | 138 | 10 | 9 | 270 |
-| `olympiad2026open_1469895.TUMX` | 1025 | 206 | 11 | 4516 |
-
-SHA-256 identifiers for the three added fixtures:
-
-```text
-TUNX fac89914da2949230eac5a6d2d273c1214760fe7b5fe6f7ed1b8c3fbdb54b5ce
-TURX cb0053131cc919e28aa2ef382d995609a56a52947f098fcecd3ae2e0e0911a71
-TUTX 82b75903e398d4708e6ef969ba5e2decb437420fe140b9e5a76872d845d43d6a
-```
-
-Published references retrieved September 28, 2026, saved as optional offline HTML
-snapshots for independent score comparisons:
-
-- [Abu Dhabi standings after round 5](https://chess-results.com/tnr1498717.aspx?lan=1&art=1&rd=5&zeilen=99999):
-  `tunx-reference.html`, all 74 player totals, including the three reported byes.
-- [Juvenil Femenino standings after round 5](https://chess-results.com/tnr1499104.aspx?lan=1&art=1&rd=5&zeilen=99999):
-  `turx-reference.html`, all six player totals, including forfeits.
-- [Croatian league crosstable](https://chess-results.com/tnr1356710.aspx?lan=1&art=0&rd=6&zeilen=99999):
-  `tutx-reference.html`, board-point totals for all ten listed teams through round 6.
-
-Every fixture also passes lossless reconstruction from its raw sections. These
-checks verify the observed data; other software versions, result codes, scoring
-systems, and pairing layouts still require independent examples. Application
-settings and calculated rankings/tie-breaks remain subject to the limits in the
-TUMX notes. The decoder performs no network requests.
+TUTX assigns a fixed block of `boards_per_match` games to each match. Empty
+`(white=0, black=0, result=0)` slots are retained and unscored. TUMX links games
+through player team membership, using the known opponent when one player is
+missing. Ordinary match totals sum board scores; incomplete totals are `None`.
+Special team entries use stored scores at match offsets 4 and 6, in half-point
+units, rather than assuming a win or loss.

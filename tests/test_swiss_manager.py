@@ -1,6 +1,6 @@
-"""Shared layout, format differences, and local binary regressions."""
+"""Shared binary layout, metadata, validation, and public entry points."""
 
-from collections import Counter
+from datetime import date
 from pathlib import Path
 from struct import pack_into
 
@@ -12,31 +12,185 @@ from chess_results_api import (
     decode_tournament,
     load_tournament,
 )
-from chess_results_api.models import GameResult
+from chess_results_api.models import PartialDate
 
 from .helpers import (
-    LOCAL_BINARIES,
     _document,
     _game,
+    _individual_document,
     _marker,
-    _match,
     _paired_document,
     _player,
     _schedule,
+    _strings,
 )
 
 
-def _individual_document(**overrides: object) -> bytes:
-    options = {
-        "tournament_type": 0,
-        "player": _player(0, board=0) * 2,
-        "player_count": 2,
-        "boards": 0,
-        "round_count": 1,
-        "schedule": _schedule(1, 0),
-        "games": _game(),
-    }
-    return _document(**(options | overrides))
+def test_empty_tournament_and_lossless_sections() -> None:
+    data = _document()
+    tournament = decode_tournament(data)
+    assert tournament.tournament_id == 12345
+    assert tournament.metadata.name == "Test ♟"
+    assert tournament.metadata.section == "Open"
+    assert tournament.metadata.location == "Samarkand"
+    assert tournament.players == tournament.teams == ()
+    assert b"".join(section.data for section in tournament.sections) == data
+    assert [section.name for section in tournament.sections] == [
+        "header",
+        "configuration",
+        "schedule",
+        "players",
+        "player_pairings",
+        "teams",
+        "team_pairings",
+        "directory",
+    ]
+    for section in tournament.sections:
+        assert data[section.offset : section.offset + len(section.data)] == section.data
+
+
+def test_unicode_counts_utf16_code_units() -> None:
+    assert decode_tournament(_document(name="棋赛 🏆")).metadata.name == "棋赛 🏆"
+
+
+def test_player_and_team_fields() -> None:
+    fields = [""] * 18
+    fields[0], fields[1], fields[3], fields[4], fields[10] = (
+        "Example",
+        "Zoë",
+        "Z. Example",
+        "IM",
+        "UZB",
+    )
+    tail = bytearray(134)
+    pack_into("<H", tail, 32, 2400)
+    pack_into("<IHH", tail, 48, 123456789, 1, 4)
+    player = _strings(*fields) + tail
+    team = _strings("Example team", "Example", "Captain", "UZB", "A") + bytes(96)
+    tournament = decode_tournament(_document(player=player, team=team))
+    assert len(tournament.players) == len(tournament.teams) == 1
+    record = tournament.players[0]
+    assert (record.last_name, record.first_name, record.display_name) == (
+        "Example",
+        "Zoë",
+        "Z. Example",
+    )
+    assert (record.title, record.federation, record.rating) == ("IM", "UZB", 2400)
+    assert (record.fide_id, record.team_number, record.board_number) == (123456789, 1, 4)
+    assert tournament.teams[record.team_number - 1].name == "Example team"
+    assert tournament.teams[0].captain == "Captain"
+
+
+def test_missing_identifiers_and_ratings_remain_zero() -> None:
+    player = _strings("Example", *([""] * 17)) + bytes(134)
+    record = decode_tournament(_document(player=player)).players[0]
+    assert record.rating == record.fide_id == 0
+
+
+@pytest.mark.parametrize("data", [b"", b"not a Swiss-Manager file", bytes(200), _document()[:-1]])
+def test_rejects_bad_envelopes(data: bytes) -> None:
+    with pytest.raises(SwissManagerDecodeError):
+        decode_tournament(data)
+
+
+@pytest.mark.parametrize("index,value", [(0, 0), (1, 2**32 - 1), (5, 0), (6, 1)])
+def test_rejects_bad_offsets(index: int, value: int) -> None:
+    data = bytearray(_document())
+    pack_into("<I", data, len(data) - 32 + 4 * index, value)
+    with pytest.raises(SwissManagerDecodeError):
+        decode_tournament(bytes(data))
+
+
+def test_rejects_wrong_section_marker() -> None:
+    data = _document().replace(_marker(0xA5), _marker(0xB5))
+    with pytest.raises(SwissManagerDecodeError, match="section marker"):
+        decode_tournament(data)
+
+
+def test_rejects_unsupported_header_layout() -> None:
+    data = _document().replace(_marker(0x95), bytes(4))
+    with pytest.raises(SwissManagerDecodeError, match="header layout"):
+        decode_tournament(data)
+
+
+def test_rejects_invalid_utf16() -> None:
+    data = bytearray(_document())
+    data[110:112] = b"\x00\xd8"  # Unpaired high surrogate.
+    with pytest.raises(SwissManagerDecodeError, match="Invalid UTF-16"):
+        decode_tournament(bytes(data))
+
+
+@pytest.mark.parametrize("record", [b"\xff\xff", _strings(*([""] * 18)) + bytes(133)])
+def test_player_cannot_read_past_section_boundary(record: bytes) -> None:
+    with pytest.raises(SwissManagerDecodeError, match="Truncated record"):
+        decode_tournament(_document(player=record))
+
+
+def test_team_cannot_read_past_section_boundary() -> None:
+    with pytest.raises(SwissManagerDecodeError, match="Truncated record"):
+        decode_tournament(_document(team=_strings(*([""] * 5)) + bytes(95)))
+
+
+def test_load_missing_path(tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError):
+        load_tournament(tmp_path / "missing.bin")
+
+
+def test_unknown_record_bytes_are_preserved() -> None:
+    game = bytearray(_game())
+    game[-1] = 123
+    tournament = decode_tournament(_paired_document(games=bytes(game)))
+    assert tournament.rounds[0].games[0].raw_data == game
+    assert tournament.players[0].numeric_data == _player(1)[-134:]
+    assert tournament.teams[0].numeric_data == bytes(96)
+    assert tournament.rounds[0].numeric_data == _schedule(1, 1)[-76:]
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        (0, None),
+        (19920000, PartialDate(1992, None, None)),
+        (19920700, PartialDate(1992, 7, None)),
+        (20000229, PartialDate(2000, 2, 29)),
+    ],
+)
+def test_partial_birth_dates(value: int, expected: PartialDate | None) -> None:
+    player = decode_tournament(_document(player=_player(0, birth_date=value))).players[0]
+    assert player.birth_date == expected
+
+
+@pytest.mark.parametrize("value", [19930229, 20261301, 20000001, 99999999])
+def test_invalid_birth_dates(value: int) -> None:
+    with pytest.raises(SwissManagerDecodeError, match="Invalid date"):
+        decode_tournament(_document(player=_player(0, birth_date=value)))
+
+
+@pytest.mark.parametrize("value", [20260229, 20260000])
+def test_invalid_schedule_dates(value: int) -> None:
+    with pytest.raises(SwissManagerDecodeError, match="date"):
+        decode_tournament(_paired_document(schedule=_schedule(1, 1, scheduled_date=value)))
+
+
+def test_truncated_configuration() -> None:
+    with pytest.raises(SwissManagerDecodeError, match="configuration"):
+        decode_tournament(_document(configuration=_marker(0x95) + bytes(32)))
+
+
+def test_configuration_fields() -> None:
+    config = bytearray(1279)
+    config[:4] = _marker(0x95)
+    pack_into("<H", config, 15, 3)
+    pack_into("<H", config, 31, 4)
+    pack_into("<4H", config, 33, 13, 74, 1, 75)
+    pack_into("<II", config, 75, 20260916, 20260927)
+    pack_into("<I", config, 1275, 492113)
+    result = decode_tournament(_document(configuration=bytes(config))).configuration
+    assert result.tie_break_codes == (13, 74, 1, 75)
+    assert result.start_date == date(2026, 9, 16)
+    assert result.end_date == date(2026, 9, 27)
+    assert result.fide_event_id == 492113
+    assert result.raw_data == config
 
 
 @pytest.mark.parametrize("kind", list(TournamentType))
@@ -83,49 +237,6 @@ def test_scheduled_round_count_is_independent_of_selected_round() -> None:
     assert tournament.configuration.round_count == len(tournament.rounds) == 2
 
 
-@pytest.mark.parametrize(
-    "opponent,result,points",
-    [
-        (-1, 9, (1, None)),
-        (-1, 0, None),
-        (-2, 3, (0, None)),
-        (-2, 2, (0.5, None)),
-        (-2, 0, None),
-        (-2, 250, None),
-    ],
-)
-def test_individual_special_pairings(opponent: int, result: int, points: tuple | None) -> None:
-    game = (
-        decode_tournament(_individual_document(games=_game(1, opponent, result))).rounds[0].games[0]
-    )
-    assert game.black_player == opponent
-    assert game.points == points
-    assert not game.played
-    assert game.match_number is game.board_number is None
-
-
-def test_bye_result_is_only_scored_for_a_bye_opponent() -> None:
-    game = decode_tournament(_individual_document(games=_game(1, 2, 9))).rounds[0].games[0]
-    assert game.result == GameResult.BYE
-    assert game.points is None
-
-
-@pytest.mark.parametrize("white,black", [(0, 2), (1, 0), (3, 2), (1, 3), (1, -3), (1, 1)])
-def test_invalid_individual_references(white: int, black: int) -> None:
-    with pytest.raises(SwissManagerDecodeError):
-        decode_tournament(_individual_document(games=_game(white, black)))
-
-
-def test_individual_player_cannot_also_be_unpaired_in_same_round() -> None:
-    with pytest.raises(SwissManagerDecodeError, match="more than once"):
-        decode_tournament(
-            _individual_document(
-                games=_game() + _game(1, -2, 3),
-                schedule=_schedule(2, 0),
-            )
-        )
-
-
 @pytest.mark.parametrize("field,value", [(15, 99), (31, 10)])
 def test_invalid_configuration_codes(field: int, value: int) -> None:
     config = bytearray(1279)
@@ -153,99 +264,3 @@ def test_individual_directory_validation(index: int) -> None:
     pack_into("<I", data, len(data) - 32 + 4 * index, 1)
     with pytest.raises(SwissManagerDecodeError):
         decode_tournament(bytes(data))
-
-
-def test_round_robin_preserves_empty_board_slots() -> None:
-    data = _paired_document(
-        tournament_type=2,
-        boards=2,
-        schedule=_schedule(2, 1),
-        games=_game() + _game(0, 0, 0),
-    )
-    tournament = decode_tournament(data)
-    match = tournament.rounds[0].matches[0]
-    assert match.board_points is None
-    assert len(match.games) == 2
-    empty = match.games[1]
-    assert (empty.white_player, empty.black_player, empty.board_number) == (0, 0, 2)
-    assert empty.points is None
-    assert not empty.played
-    assert b"".join(s.data for s in tournament.sections) == data
-
-
-def test_round_robin_slots_must_match_configured_board_count() -> None:
-    with pytest.raises(SwissManagerDecodeError, match="board slots"):
-        decode_tournament(_paired_document(tournament_type=2, boards=2))
-
-
-def test_round_robin_empty_board_cannot_have_result() -> None:
-    with pytest.raises(SwissManagerDecodeError, match="empty board slot"):
-        decode_tournament(_paired_document(tournament_type=2, games=_game(0, 0, 1)))
-
-
-def test_round_robin_checks_slot_against_player_team() -> None:
-    # Teams 1 and 2 occupy separate matches, so their players cannot face each other.
-    with pytest.raises(SwissManagerDecodeError, match="match slot"):
-        decode_tournament(
-            _paired_document(
-                tournament_type=2,
-                schedule=_schedule(2, 2),
-                games=_game() + _game(0, 0, 0),
-                matches=_match(1, -1) + _match(2, -1),
-            )
-        )
-
-
-@pytest.mark.parametrize(
-    "suffix,kind,players,teams,rounds,games",
-    [
-        ("TUNX", TournamentType.SWISS, 74, 0, 7, 258),
-        ("TURX", TournamentType.ROUND_ROBIN, 6, 0, 5, 15),
-        ("TUTX", TournamentType.TEAM_ROUND_ROBIN, 138, 10, 9, 270),
-    ],
-)
-def test_local_new_binaries(
-    suffix: str,
-    kind: TournamentType,
-    players: int,
-    teams: int,
-    rounds: int,
-    games: int,
-) -> None:
-    path = Path(__file__).parent / "fixtures" / LOCAL_BINARIES[suffix]
-    if not path.is_file():
-        pytest.skip(f"Local {suffix} fixture is not distributed")
-    data = path.read_bytes()
-    tournament = decode_tournament(data)
-    assert tournament.tournament_type == kind
-    assert (len(tournament.players), len(tournament.teams), len(tournament.rounds)) == (
-        players,
-        teams,
-        rounds,
-    )
-    assert sum(len(r.games) for r in tournament.rounds) == games
-    assert b"".join(section.data for section in tournament.sections) == data
-    if suffix == "TUNX":
-        assert tournament.tournament_id == 1498717
-        assert tournament.players[0].last_name == "Al-Sharif"
-        assert tournament.metadata.text_fields[35] == "NA Noora Abdulsalam Alkhoori 9333711"
-        assert [len(r.games) for r in tournament.rounds] == [38, 39, 41, 43, 43, 43, 11]
-        assert all(g.points is None for r in tournament.rounds[5:] for g in r.games)
-        byes = [g for r in tournament.rounds for g in r.games if g.result == GameResult.BYE]
-        assert len(byes) == 3
-        assert all(g.points == (1, None) and not g.played for g in byes)
-    elif suffix == "TURX":
-        assert tournament.tournament_id == 1499104
-        assert tournament.players[0].first_name == "Gabriela"
-        assert all(r.scheduled_date is None and r.start_time == "" for r in tournament.rounds)
-        opponents = [
-            frozenset((g.white_player, g.black_player)) for r in tournament.rounds for g in r.games
-        ]
-        assert len(set(opponents)) == 15
-    else:
-        assert tournament.tournament_id == 1356710
-        assert tournament.configuration.boards_per_match == 6
-        assert sum(len(r.matches) for r in tournament.rounds) == 45
-        empty = Counter(r.number for r in tournament.rounds for g in r.games if not g.white_player)
-        assert empty == {1: 6, 2: 6, 3: 6, 4: 6, 5: 6, 6: 6, 7: 30, 8: 30, 9: 30}
-        assert all(m.board_points is None for r in tournament.rounds[6:] for m in r.matches)
