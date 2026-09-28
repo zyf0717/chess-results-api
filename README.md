@@ -1,7 +1,8 @@
 # chess-results-api
 
-[![CI](https://github.com/zyf0717/chess-results-api/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/zyf0717/chess-results-api/actions/workflows/ci.yml)
+[![PyPI version](https://img.shields.io/pypi/v/chess-results-api)](https://pypi.org/project/chess-results-api/)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue)](https://github.com/zyf0717/chess-results-api/blob/main/pyproject.toml)
+[![CI](https://github.com/zyf0717/chess-results-api/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/zyf0717/chess-results-api/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue)](https://github.com/zyf0717/chess-results-api/blob/main/LICENSE)
 
 An experimental Python 3.12+ package for downloading Chess-Results tournament
@@ -11,7 +12,7 @@ Local decoding has no runtime dependencies; downloading uses optional Playwright
 
 ## Installation
 
-After v0.1.0 is published, install into a virtual environment using
+Install into a virtual environment using
 [uv](https://docs.astral.sh/uv/getting-started/installation/):
 
 ```sh
@@ -83,7 +84,7 @@ uv build
 Local binaries and reference snapshots belong in `tests/fixtures/`, which is
 ignored by Git and excluded from distributions. Tests requiring missing fixtures
 skip; synthetic tests run offline without them. `uv build` creates distribution
-archives in `dist/`. Before publication, these wheels can be installed with
+archives in `dist/`. Built wheels can be installed locally with
 `uv pip install dist/chess_results_api-0.1.0-py3-none-any.whl`.
 Browser tests use intercepted requests and skip when Playwright or Chromium is absent.
 
