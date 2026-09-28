@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "chess-results-api"
 version = "0.1.0"
-description = "Decode Chess-Results tournament data into typed Python records."
+description = "Download Chess-Results tournament files and decode them into typed Python records."
 readme = "README.md"
 requires-python = ">=3.12"
 license = "Apache-2.0"
@@ -21,6 +21,11 @@ dependencies = []
 
 [project.urls]
 Repository = "https://github.com/zyf0717/chess-results-api"
+
+[project.optional-dependencies]
+browser = [
+    "playwright>=1.51,<2",
+]
 
 [dependency-groups]
 dev = ["pytest>=8", "ruff>=0.11"]

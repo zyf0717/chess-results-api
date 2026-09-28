@@ -12,6 +12,10 @@ This creates `.venv` and installs the package, pytest, and Ruff. Use `uv run` fo
 project commands. When changing dependencies, update `pyproject.toml` and `uv.lock`
 together.
 
+For download development, run `uv sync --locked --extra browser` and
+`uv run playwright install chromium`. Browser tests intercept requests and run
+offline; they skip when the extra or browser is absent.
+
 ## Commit messages
 
 All commits must follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/):
