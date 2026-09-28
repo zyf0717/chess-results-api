@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 from .swiss_manager import decode_tournament
 
 if TYPE_CHECKING:
-    from playwright.sync_api import Page
+    from playwright.sync_api import Page, Route
 
 
 class TournamentDownloadError(Exception):
@@ -49,8 +49,9 @@ def download_tournament(
     try:
         with sync_playwright() as playwright:
             with playwright.chromium.launch(headless=headless, timeout=timeout * 1000) as browser:
-                with browser.new_context(accept_downloads=True) as context:
+                with browser.new_context(accept_downloads=True, service_workers="block") as context:
                     context.set_default_timeout(timeout * 1000)
+                    context.route("**/*", _filter_requests)
                     data = _download(context.new_page(), tournament_id)
     except Error as exc:
         raise TournamentDownloadError(
@@ -65,6 +66,13 @@ def download_tournament(
     path = Path(destination)
     path.write_bytes(data)
     return path
+
+
+def _filter_requests(route: Route) -> None:
+    if route.request.resource_type in {"image", "font", "media"}:
+        route.abort("blockedbyclient")
+    else:
+        route.fallback()
 
 
 def _download(page: Page, tournament_id: int) -> bytes:
