@@ -2,113 +2,29 @@
 
 from datetime import date
 from pathlib import Path
-from struct import pack, pack_into
+from struct import pack_into
 
 import pytest
 
-from chess_results_api.tumx import GameResult, PartialDate, TumxDecodeError, decode_tumx, load_tumx
+from chess_results_api import SwissManagerDecodeError, decode_tournament, load_tournament
+from chess_results_api.models import GameResult, PartialDate
 
-
-def _strings(*values: str) -> bytes:
-    result = bytearray()
-    for value in values:
-        encoded = value.encode("utf-16-le")
-        result.extend(pack("<H", len(encoded) // 2))
-        result.extend(encoded)
-    return bytes(result)
-
-
-def _marker(value: int) -> bytes:
-    return bytes((value, 0xFF, 0x89, 0x44))
-
-
-def _document(
-    *,
-    player: bytes = b"",
-    team: bytes = b"",
-    name: str = "Test ♟",
-    schedule: bytes = b"",
-    games: bytes = b"",
-    matches: bytes = b"",
-    round_count: int = 0,
-    player_count: int | None = None,
-    team_count: int | None = None,
-    boards: int = 4,
-    configuration: bytes | None = None,
-) -> bytes:
-    header = bytearray(108)
-    header[:4] = _marker(0x93)
-    pack_into("<I", header, 32, 12345)
-    fields = [""] * 26
-    fields[0], fields[1], fields[5] = name, "Open", "Samarkand"
-    if configuration is None:
-        config = bytearray(1279)
-        config[:4] = _marker(0x95)
-        pack_into(
-            "<HH",
-            config,
-            21,
-            round_count,
-            int(bool(player)) if player_count is None else player_count,
-        )
-        pack_into("<HH", config, 51, int(bool(team)) if team_count is None else team_count, boards)
-        configuration = bytes(config)
-    data = header + _strings(*fields) + bytes(212) + configuration
-    offsets = []
-    for marker, content in zip(
-        (0xA3, 0xA5, 0xB3, 0xB5, 0xC3), (schedule, player, games, team, matches), strict=True
-    ):
-        offsets.append(len(data))
-        data.extend(_marker(marker) + content)
-    offsets.extend((len(data), 0))
-    data.extend(_marker(0xD3) + pack("<7I", *offsets) + _marker(0xE3))
-    return bytes(data)
-
-
-def _player(team: int, *, birth_date: int = 0, board: int = 1) -> bytes:
-    tail = bytearray(134)
-    pack_into("<I", tail, 38, birth_date)
-    pack_into("<HH", tail, 52, team, board)
-    return _strings("Example", *([""] * 17)) + tail
-
-
-def _team() -> bytes:
-    return _strings("Team", "Team", "Captain", "UZB", "A") + bytes(96)
-
-
-def _schedule(games: int, matches: int, *, scheduled_date: int = 20260916) -> bytes:
-    tail = bytearray(76)
-    pack_into("<I", tail, 0, scheduled_date)
-    pack_into("<HH", tail, 6, games, matches)
-    return _strings("15:00", *([""] * 15)) + tail
-
-
-def _game(white: int = 1, black: int = 2, result: int = 1) -> bytes:
-    return pack("<HHB16x", white, black, result)
-
-
-def _match(first: int = 1, second: int = 2, first_half_points: int = 0) -> bytes:
-    return pack("<HHHH7x", first, second & 65535, first_half_points, 0)
-
-
-def _paired_document(**overrides: object) -> bytes:
-    options = {
-        "player": _player(1) + _player(2),
-        "player_count": 2,
-        "team": _team() * 2,
-        "team_count": 2,
-        "round_count": 1,
-        "boards": 1,
-        "schedule": _schedule(1, 1),
-        "games": _game(),
-        "matches": _match(),
-    }
-    return _document(**(options | overrides))
+from .helpers import (
+    _document,
+    _game,
+    _marker,
+    _match,
+    _paired_document,
+    _player,
+    _schedule,
+    _strings,
+    _team,
+)
 
 
 def test_empty_tournament_and_lossless_sections() -> None:
     data = _document()
-    tournament = decode_tumx(data)
+    tournament = decode_tournament(data)
     assert tournament.tournament_id == 12345
     assert tournament.metadata.name == "Test ♟"
     assert tournament.metadata.section == "Open"
@@ -130,7 +46,7 @@ def test_empty_tournament_and_lossless_sections() -> None:
 
 
 def test_unicode_counts_utf16_code_units() -> None:
-    assert decode_tumx(_document(name="棋赛 🏆")).metadata.name == "棋赛 🏆"
+    assert decode_tournament(_document(name="棋赛 🏆")).metadata.name == "棋赛 🏆"
 
 
 def test_player_and_team_fields() -> None:
@@ -147,7 +63,7 @@ def test_player_and_team_fields() -> None:
     pack_into("<IHH", tail, 48, 123456789, 1, 4)
     player = _strings(*fields) + tail
     team = _strings("Example team", "Example", "Captain", "UZB", "A") + bytes(96)
-    tournament = decode_tumx(_document(player=player, team=team))
+    tournament = decode_tournament(_document(player=player, team=team))
     assert len(tournament.players) == len(tournament.teams) == 1
     record = tournament.players[0]
     assert (record.last_name, record.first_name, record.display_name) == (
@@ -163,63 +79,63 @@ def test_player_and_team_fields() -> None:
 
 def test_missing_identifiers_and_ratings_remain_zero() -> None:
     player = _strings("Example", *([""] * 17)) + bytes(134)
-    record = decode_tumx(_document(player=player)).players[0]
+    record = decode_tournament(_document(player=player)).players[0]
     assert record.rating == record.fide_id == 0
 
 
 @pytest.mark.parametrize("data", [b"", b"not a TUMX file", bytes(200), _document()[:-1]])
 def test_rejects_bad_envelopes(data: bytes) -> None:
-    with pytest.raises(TumxDecodeError):
-        decode_tumx(data)
+    with pytest.raises(SwissManagerDecodeError):
+        decode_tournament(data)
 
 
 @pytest.mark.parametrize("index,value", [(0, 0), (1, 2**32 - 1), (5, 0), (6, 1)])
 def test_rejects_bad_offsets(index: int, value: int) -> None:
     data = bytearray(_document())
     pack_into("<I", data, len(data) - 32 + 4 * index, value)
-    with pytest.raises(TumxDecodeError):
-        decode_tumx(bytes(data))
+    with pytest.raises(SwissManagerDecodeError):
+        decode_tournament(bytes(data))
 
 
 def test_rejects_wrong_section_marker() -> None:
     data = _document().replace(_marker(0xA5), _marker(0xB5))
-    with pytest.raises(TumxDecodeError, match="section marker"):
-        decode_tumx(data)
+    with pytest.raises(SwissManagerDecodeError, match="section marker"):
+        decode_tournament(data)
 
 
 def test_rejects_unsupported_header_layout() -> None:
     data = _document().replace(_marker(0x95), bytes(4))
-    with pytest.raises(TumxDecodeError, match="header layout"):
-        decode_tumx(data)
+    with pytest.raises(SwissManagerDecodeError, match="header layout"):
+        decode_tournament(data)
 
 
 def test_rejects_invalid_utf16() -> None:
     data = bytearray(_document())
     data[110:112] = b"\x00\xd8"  # Unpaired high surrogate.
-    with pytest.raises(TumxDecodeError, match="Invalid UTF-16"):
-        decode_tumx(bytes(data))
+    with pytest.raises(SwissManagerDecodeError, match="Invalid UTF-16"):
+        decode_tournament(bytes(data))
 
 
 @pytest.mark.parametrize("record", [b"\xff\xff", _strings(*([""] * 18)) + bytes(133)])
 def test_player_cannot_read_past_section_boundary(record: bytes) -> None:
-    with pytest.raises(TumxDecodeError, match="Truncated record"):
-        decode_tumx(_document(player=record))
+    with pytest.raises(SwissManagerDecodeError, match="Truncated record"):
+        decode_tournament(_document(player=record))
 
 
 def test_team_cannot_read_past_section_boundary() -> None:
-    with pytest.raises(TumxDecodeError, match="Truncated record"):
-        decode_tumx(_document(team=_strings(*([""] * 5)) + bytes(95)))
+    with pytest.raises(SwissManagerDecodeError, match="Truncated record"):
+        decode_tournament(_document(team=_strings(*([""] * 5)) + bytes(95)))
 
 
 def test_load_path(tmp_path: Path) -> None:
     path = tmp_path / "example.TUMX"
     path.write_bytes(_document())
-    assert load_tumx(path) == decode_tumx(path.read_bytes())
+    assert load_tournament(path) == decode_tournament(path.read_bytes())
 
 
 def test_load_missing_path(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError):
-        load_tumx(tmp_path / "missing.TUMX")
+        load_tournament(tmp_path / "missing.TUMX")
 
 
 @pytest.mark.parametrize(
@@ -236,7 +152,7 @@ def test_load_missing_path(tmp_path: Path) -> None:
     ],
 )
 def test_results_and_team_orientation(code: int, points: tuple | None, played: bool) -> None:
-    tournament = decode_tumx(_paired_document(games=_game(2, 1, code)))
+    tournament = decode_tournament(_paired_document(games=_game(2, 1, code)))
     round_ = tournament.rounds[0]
     game = round_.games[0]
     assert game.points == points
@@ -252,7 +168,7 @@ def test_results_and_team_orientation(code: int, points: tuple | None, played: b
 @pytest.mark.parametrize("missing", ["white", "black"])
 def test_empty_player_slot_keeps_game_and_team_score(missing: str) -> None:
     game = _game(0, 2, 5) if missing == "white" else _game(1, 0, 4)
-    tournament = decode_tumx(_paired_document(games=game))
+    tournament = decode_tournament(_paired_document(games=game))
     assert tournament.rounds[0].matches[0].board_points == (
         (0, 1) if missing == "white" else (1, 0)
     )
@@ -260,7 +176,7 @@ def test_empty_player_slot_keeps_game_and_team_score(missing: str) -> None:
 
 @pytest.mark.parametrize("opponent,stored,points", [(-1, 4, (2, 0)), (-2, 0, (0, 0))])
 def test_special_team_pairings(opponent: int, stored: int, points: tuple) -> None:
-    tournament = decode_tumx(
+    tournament = decode_tournament(
         _document(
             team=_team(),
             round_count=1,
@@ -275,14 +191,14 @@ def test_special_team_pairings(opponent: int, stored: int, points: tuple) -> Non
 
 
 def test_incomplete_match_has_no_total() -> None:
-    tournament = decode_tumx(_paired_document(boards=4))
+    tournament = decode_tournament(_paired_document(boards=4))
     assert tournament.rounds[0].matches[0].board_points is None
 
 
 def test_unknown_record_bytes_are_preserved() -> None:
     game = bytearray(_game())
     game[-1] = 123
-    tournament = decode_tumx(_paired_document(games=bytes(game)))
+    tournament = decode_tournament(_paired_document(games=bytes(game)))
     assert tournament.rounds[0].games[0].raw_data == game
     assert tournament.players[0].numeric_data == _player(1)[-134:]
     assert tournament.teams[0].numeric_data == bytes(96)
@@ -299,20 +215,20 @@ def test_unknown_record_bytes_are_preserved() -> None:
     ],
 )
 def test_partial_birth_dates(value: int, expected: PartialDate | None) -> None:
-    player = decode_tumx(_document(player=_player(0, birth_date=value))).players[0]
+    player = decode_tournament(_document(player=_player(0, birth_date=value))).players[0]
     assert player.birth_date == expected
 
 
 @pytest.mark.parametrize("value", [19930229, 20261301, 20000001, 99999999])
 def test_invalid_birth_dates(value: int) -> None:
-    with pytest.raises(TumxDecodeError, match="Invalid date"):
-        decode_tumx(_document(player=_player(0, birth_date=value)))
+    with pytest.raises(SwissManagerDecodeError, match="Invalid date"):
+        decode_tournament(_document(player=_player(0, birth_date=value)))
 
 
 @pytest.mark.parametrize("value", [20260229, 20260000])
 def test_invalid_schedule_dates(value: int) -> None:
-    with pytest.raises(TumxDecodeError, match="date"):
-        decode_tumx(_paired_document(schedule=_schedule(1, 1, scheduled_date=value)))
+    with pytest.raises(SwissManagerDecodeError, match="date"):
+        decode_tournament(_paired_document(schedule=_schedule(1, 1, scheduled_date=value)))
 
 
 @pytest.mark.parametrize(
@@ -338,23 +254,24 @@ def test_invalid_schedule_dates(value: int) -> None:
     ],
 )
 def test_invalid_round_records(overrides: dict, message: str) -> None:
-    with pytest.raises(TumxDecodeError, match=message):
-        decode_tumx(_paired_document(**overrides))
+    with pytest.raises(SwissManagerDecodeError, match=message):
+        decode_tournament(_paired_document(**overrides))
 
 
 def test_truncated_configuration() -> None:
-    with pytest.raises(TumxDecodeError, match="configuration"):
-        decode_tumx(_document(configuration=_marker(0x95) + bytes(32)))
+    with pytest.raises(SwissManagerDecodeError, match="configuration"):
+        decode_tournament(_document(configuration=_marker(0x95) + bytes(32)))
 
 
 def test_configuration_fields() -> None:
     config = bytearray(1279)
     config[:4] = _marker(0x95)
+    pack_into("<H", config, 15, 3)
     pack_into("<H", config, 31, 4)
     pack_into("<4H", config, 33, 13, 74, 1, 75)
     pack_into("<II", config, 75, 20260916, 20260927)
     pack_into("<I", config, 1275, 492113)
-    result = decode_tumx(_document(configuration=bytes(config))).configuration
+    result = decode_tournament(_document(configuration=bytes(config))).configuration
     assert result.tie_break_codes == (13, 74, 1, 75)
     assert result.start_date == date(2026, 9, 16)
     assert result.end_date == date(2026, 9, 27)
@@ -366,7 +283,7 @@ def test_local_olympiad_fixture() -> None:
     path = Path(__file__).parent / "fixtures" / "olympiad2026open_1469895.TUMX"
     if not path.is_file():
         pytest.skip("Local TUMX fixture is not distributed; see README.md")
-    tournament = load_tumx(path)
+    tournament = load_tournament(path)
     assert tournament.tournament_id == 1469895
     assert tournament.metadata.name == "46th Chess Olympiad Samarkand 2026"
     assert tournament.metadata.section == "Open"

@@ -4,6 +4,8 @@ This describes `olympiad2026open_1469895.TUMX` (398,846 bytes), SHA-256
 `57266aac705e5a233e2bd8f21b2d174f052662075e1727b9084fb8ab350503a1`.
 It is reverse-engineering evidence for one layout, not a complete Swiss-Manager
 binary specification. Unidentified bytes remain accessible without invented names.
+See [the shared format notes](swiss-manager-format.md) for the other formats and
+the evidence that corrected the header-string and round-count interpretations.
 
 All integers are little-endian. A string is a `uint16` UTF-16 code-unit count
 followed by that many UTF-16LE code units. Non-BMP characters consume two units.
@@ -30,7 +32,8 @@ pairings; value 5 points back to the directory; value 6 is zero. This gives chec
 section boundaries without searching for marker-like bytes inside arbitrary data.
 
 The header starts with 108 fixed bytes, including the tournament ID (`uint32` at
-32), followed by 26 strings and 212 remaining bytes before configuration. Known
+32), followed by 132 strings before configuration. In this fixture the last 106
+strings are empty, accounting for 212 bytes previously treated as padding. Known
 string indices are name 0, section 1, remarks 2, organizer 4, location 5, time
 control 14, federation 20, chief arbiter 21, and website 24. All strings are exposed.
 The remaining header fields are retained in `Tournament.sections`.
@@ -41,8 +44,9 @@ Offsets are relative to the `95` marker.
 
 | Offset | Type | Decoded field | Fixture value |
 | ---: | --- | --- | --- |
-| 21 | uint16 | Scheduled round count | 11 |
+| 15 | uint16 | Tournament type (team Swiss) | 3 |
 | 23 | uint16 | Player count | 1025 |
+| 27 | uint16 | Scheduled round count | 11 |
 | 31 | uint16 | Number of selected tie-breaks | 4 |
 | 33 | uint16 array | Selected tie-break codes | 13, 74, 1, 75 |
 | 51 | uint16 | Team count | 206 |

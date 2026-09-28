@@ -49,7 +49,8 @@ colons, or the breaking-change `!` marker in branch names.
 
 Keep changes focused, readable, and typed. Prefer small functions and explicit
 data flow. For decoder changes, document the binary-layout evidence in
-[`docs/tumx-format.md`](docs/tumx-format.md), preserve unidentified data, and check
+[`docs/swiss-manager-format.md`](docs/swiss-manager-format.md) and the relevant
+format-specific notes, preserve unidentified data, and check
 record boundaries, missing values, reference numbers, dates, and score units.
 
 Add regression or edge-case tests when changing behavior. Tests must run offline.
